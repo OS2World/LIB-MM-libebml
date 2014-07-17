@@ -1,0 +1,109 @@
+diff -uNr  make/linux/Makefile.org make/linux/Makefile
+--- make/linux/Makefile.org	2011-01-29 20:45:50.000000000 +0900
++++ make/linux/Makefile	2012-01-28 14:54:02.000000000 +0900
+@@ -9,9 +9,11 @@
+ # 'make DEBUG=yes'.
+ #
+ 
++SYS=$(shell uname -s)
++
+ # Paths
+ # BeOS wants the libs and headers in /boot/home/config
+-ifeq (BeOS,$(shell uname -s))
++ifeq (BeOS,$(SYS))
+ prefix=/boot/home/config
+ else
+ prefix=/usr/local
+@@ -25,7 +27,7 @@
+ LD = $(CXX)
+ AR = $(CROSS)ar
+ RANLIB = $(CROSS)ranlib
+-INSTALL = install
++INSTALL = ${INSTALL-install}
+ INSTALL_OPTS = -m 644
+ INSTALL_OPTS_LIB = -m 644
+ INSTALL_DIR_OPTS = -m 755
+@@ -48,8 +50,14 @@
+ 
+ # Names
+ LIBRARY=libebml.a
++ifneq (OS/2, $(SYS))
+ LIBRARY_SO=libebml.so
+ LIBRARY_SO_VER=libebml.so.3
++else
++LIBRARY_SO=ebml.dll
++LIBRARY_SO_DEF=ebml.def
++LIBRARY_SO_IMP=libebml_dll.a
++endif
+ 
+ # source-files
+ sources:=$(wildcard ${SRC_DIR}*$(EXTENSION))
+@@ -62,10 +70,13 @@
+ objects_so:=$(patsubst %$(EXTENSION),%.lo,$(sources))
+ 
+ WARNINGFLAGS=-Wall -Wno-unknown-pragmas -ansi -fno-gnu-keywords -Wshadow
++ifeq (OS/2, $(SYS))
++WARNINGFLAGS:=$(WARNINGFLAGS:-ansi=)
++endif
+ COMPILEFLAGS=$(WARNINGFLAGS) $(CXXFLAGS) $(CPPFLAGS) $(DEBUGFLAGS) $(INCLUDE)
+ DEPENDFLAGS  = $(CXXFLAGS) $(INCLUDE)
+ 
+-ifeq (Darwin,$(shell uname -s))
++ifeq (Darwin,$(SYS))
+ all: staticlib
+ else
+ all: staticlib sharedlib
+@@ -91,15 +102,29 @@
+ 	$(RANLIB) $@
+ 
+ $(LIBRARY_SO): $(objects_so)
++ifneq (OS/2, $(SYS))
+ 	$(CXX) -shared -Wl,-soname,$(LIBRARY_SO_VER) -o $(LIBRARY_SO_VER) $(objects_so)
+ 	rm -f $(LIBRARY_SO)
+ 	ln -s $(LIBRARY_SO_VER) $(LIBRARY_SO)
++else
++	echo "LIBRARY $(LIBRARY_SO:.dll=)" > $(LIBRARY_SO_DEF)
++	echo "DATA MULTIPLE NONSHARED" >> $(LIBRARY_SO_DEF)
++	echo "EXPORTS" >> $(LIBRARY_SO_DEF)
++	emxexp $(objects_so) >> $(LIBRARY_SO_DEF)
++	emximp -o $(LIBRARY_SO_IMP) $(LIBRARY_SO_DEF)
++	$(CXX) -Zdll -o $(LIBRARY_SO) $(objects_so) $(LIBRARY_SO_DEF)
++endif
+ 
+ clean:
+ 	rm -f $(objects) $(objects_so)
+ 	rm -f $(LIBRARY)
+ 	rm -f $(LIBRARY_SO)
++ifneq (OS/2, $(SYS))
+ 	rm -f $(LIBRARY_SO_VER)
++else
++	rm -f $(LIBRARY_SO_DEF)
++	rm -f $(LIBRARY_SO_IMP)
++endif
+ 	rm -f CORE
+ 
+ distclean dist-clean: clean
+@@ -115,7 +140,7 @@
+ 		$(CXX) $(DEPENDFLAGS) -MM -MT $$o $$i >> .depend ; \
+ 	done
+ 
+-ifeq (Darwin,$(shell uname -s))
++ifeq (Darwin,$(SYS))
+ install: install_staticlib install_headers
+ else
+ install: install_staticlib install_sharedlib install_headers
+@@ -137,9 +162,13 @@
+ 
+ install_sharedlib: $(LIBRARY_SO)
+ 	$(INSTALL) $(INSTALL_DIR_OPTS) -d $(libdir)
++ifneq (OS/2, $(SYS))
+ 	$(INSTALL) $(INSTALL_OPTS_LIB) $(LIBRARY_SO_VER) $(libdir)
+ 	ln -fs $(LIBRARY_SO_VER) $(libdir)/$(LIBRARY_SO)
+-
++else
++	$(INSTALL) $(INSTALL_OPTS_LIB) $(LIBRARY_SO) $(libdir)
++	$(INSTALL) $(INSTALL_OPTS_LIB) $(LIBRARY_SO_IMP) $(libdir)
++endif
+ 
+ ifneq ($(wildcard .depend),)
+ include .depend
